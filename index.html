@@ -7,46 +7,55 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="top-bar">
+        <h1 data-i18n="appTitle">FridgeMate</h1>
+        <label for="lang-select" class="visually-hidden" data-i18n="language">Language</label>
+        <select id="lang-select">
+            <option value="en">English</option>
+            <option value="ko">한국어</option>
+        </select>
+    </div>
+
     <div id="tabs">
-        <button data-tab="fridge" class="active">Fridge</button>
-        <button data-tab="freezer">Freezer</button>
-        <button data-tab="pantry">Pantry</button>
+        <button data-tab="fridge" class="active" data-i18n="tabFridge">Fridge</button>
+        <button data-tab="freezer" data-i18n="tabFreezer">Freezer</button>
+        <button data-tab="pantry" data-i18n="tabPantry">Pantry</button>
     </div>
 
     <div id="fridge" class="storage">
-        <h2>Fridge</h2>
+        <h2 data-i18n="fridgeTitle">Fridge</h2>
         <form id="fridge-add-section" class="section-form">
-            <input name="name" placeholder="Section name" required>
+            <input name="name" required data-i18n-placeholder="sectionNamePlaceholder">
             <select name="type">
-                <option value="Shelf">Shelf</option>
-                <option value="Door">Door</option>
+                <option value="Shelf" data-i18n-option="sectionTypeShelf">Shelf</option>
+                <option value="Door" data-i18n-option="sectionTypeDoor">Door</option>
             </select>
-            <button type="submit">Add Section</button>
+            <button type="submit" data-i18n="addSection">Add Section</button>
         </form>
         <div id="fridge-sections"></div>
     </div>
 
     <div id="freezer" class="storage" style="display:none">
-        <h2>Freezer</h2>
+        <h2 data-i18n="freezerTitle">Freezer</h2>
         <form id="freezer-add-section" class="section-form">
-            <input name="name" placeholder="Section name" required>
+            <input name="name" required data-i18n-placeholder="sectionNamePlaceholder">
             <select name="type">
-                <option value="Shelf">Shelf</option>
-                <option value="Door">Door</option>
+                <option value="Shelf" data-i18n-option="sectionTypeShelf">Shelf</option>
+                <option value="Door" data-i18n-option="sectionTypeDoor">Door</option>
             </select>
-            <button type="submit">Add Section</button>
+            <button type="submit" data-i18n="addSection">Add Section</button>
         </form>
         <div id="freezer-sections"></div>
     </div>
 
     <div id="pantry" class="storage" style="display:none">
-        <h2>Pantry</h2>
+        <h2 data-i18n="pantryTitle">Pantry</h2>
         <form id="pantry-add-section" class="section-form">
-            <input name="name" placeholder="Section name" required>
+            <input name="name" required data-i18n-placeholder="sectionNamePlaceholder">
             <select name="type">
-                <option value="Shelf">Shelf</option>
+                <option value="Shelf" data-i18n-option="sectionTypeShelf">Shelf</option>
             </select>
-            <button type="submit">Add Section</button>
+            <button type="submit" data-i18n="addSection">Add Section</button>
         </form>
         <div id="pantry-sections"></div>
     </div>
