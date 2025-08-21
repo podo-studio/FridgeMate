@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FridgeMate</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="tabs">
+        <button data-tab="fridge" class="active">Fridge</button>
+        <button data-tab="freezer">Freezer</button>
+        <button data-tab="pantry">Pantry</button>
+    </div>
+
+    <div id="fridge" class="storage">
+        <h2>Fridge</h2>
+        <form id="fridge-add-section" class="section-form">
+            <input name="name" placeholder="Section name" required>
+            <select name="type">
+                <option value="Shelf">Shelf</option>
+                <option value="Door">Door</option>
+            </select>
+            <button type="submit">Add Section</button>
+        </form>
+        <div id="fridge-sections"></div>
+    </div>
+
+    <div id="freezer" class="storage" style="display:none">
+        <h2>Freezer</h2>
+        <form id="freezer-add-section" class="section-form">
+            <input name="name" placeholder="Section name" required>
+            <select name="type">
+                <option value="Shelf">Shelf</option>
+                <option value="Door">Door</option>
+            </select>
+            <button type="submit">Add Section</button>
+        </form>
+        <div id="freezer-sections"></div>
+    </div>
+
+    <div id="pantry" class="storage" style="display:none">
+        <h2>Pantry</h2>
+        <form id="pantry-add-section" class="section-form">
+            <input name="name" placeholder="Section name" required>
+            <select name="type">
+                <option value="Shelf">Shelf</option>
+            </select>
+            <button type="submit">Add Section</button>
+        </form>
+        <div id="pantry-sections"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

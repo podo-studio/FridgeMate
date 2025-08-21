@@ -1,0 +1,65 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+#tabs {
+    display: flex;
+}
+
+#tabs button {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    background: #ddd;
+    font-size: 16px;
+}
+
+#tabs button.active {
+    background: #bbb;
+}
+
+.storage {
+    padding: 10px;
+}
+
+.section {
+    border: 1px solid #ccc;
+    margin-bottom: 10px;
+    padding: 5px;
+}
+
+.section-form, .item-form {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.section-form input, .item-form input, .section-form select {
+    padding: 5px;
+    font-size: 16px;
+}
+
+.item-form button, .section-form button {
+    padding: 8px;
+    font-size: 16px;
+}
+
+.section ul {
+    list-style: none;
+    padding: 0;
+}
+
+.section ul li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.section ul li button {
+    margin-left: 10px;
+}
