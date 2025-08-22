@@ -43,6 +43,7 @@
 </head>
 <body class="bg-gray-100">
 
+    <!-- 앱 전체 컨테이너 -->
     <div id="app-root"></div>
 
     <script type="module">
@@ -51,7 +52,7 @@
         let activeTab = 'fridge';
         let modalConfig = { item: null, compartmentId: null, shelfId: null, containerType: null };
         let modalContainer;
-        let appRoot; // appRoot 변수 추가
+        let appRoot;
         
         // --- 데이터 저장 키 ---
         const STORAGE_KEY = 'smart-fridge-data-local';
@@ -120,7 +121,8 @@
                         <div class="mb-2 w-24 h-auto mx-auto">
                             <img src="images/emblem.png" alt="Podo Studio Emblem" class="w-full h-full object-contain">
                         </div>
-                        <p class="text-xs text-gray-400">© ${currentYear} Podo Studio. All Rights Reserved.</p>
+						<a href="https://podo-studio.github.io/home/" class="text-xs text-purple-600 hover:underline">Podo Studio 홈으로</a>
+                        <p class="text-xs text-gray-400 mb-1">© ${currentYear} Podo Studio. All Rights Reserved.</p>
                     </footer>
                 </div>
                 <div id="main-app-screen" class="hidden bg-gradient-to-br from-blue-100 to-cyan-100 min-h-screen text-gray-800 flex-col"></div>
@@ -145,6 +147,7 @@
             
             const summary = getSummary();
             const compartmentHtml = renderCompartment(activeTab, fridgeData[activeTab]);
+            const currentYear = new Date().getFullYear();
 
             mainAppScreen.innerHTML = `
                 <header class="p-4 bg-white/80 backdrop-blur-sm shadow-md sticky top-0 z-20">
@@ -154,6 +157,7 @@
                         <span>임박: <strong class="text-yellow-600">${summary.expiringSoon}</strong>개</span>
                         <span>만료: <strong class="text-red-600">${summary.expired}</strong>개</span>
                     </div>
+					<p class="mt-2 text-center text-gray-400">데이터는 현재 브라우저에만 저장됩니다.</p>
                 </header>
                 <main class="flex-grow flex flex-col p-4">
                     <div class="max-w-4xl w-full mx-auto flex-grow flex flex-col">
@@ -165,8 +169,12 @@
                         <div id="compartment-content" class="flex-grow">${compartmentHtml}</div>
                     </div>
                 </main>
-                <footer class="text-center text-xs text-gray-500 p-4">
-                    <p>데이터는 현재 브라우저에만 저장됩니다.</p>
+                <footer class="text-center text-xs text-gray-500 p-4 bg-white/80">
+                    <div class="mb-2 w-16 h-auto mx-auto">
+                        <img src="images/emblem.png" alt="Podo Studio Emblem" class="w-full h-full object-contain">
+                    </div>
+                    <a href="https://podo-studio.github.io/home/" class="text-purple-600 hover:underline">Podo Studio 홈으로</a>
+                    <p class="mb-1">© ${currentYear} Podo Studio. All Rights Reserved.</p>
                 </footer>
             `;
         }
@@ -264,8 +272,6 @@
                 const target = e.target.closest('[data-action], [data-tab]');
                 if (!target) return;
 
-                // closest는 가장 가까운 상위 요소를 찾으므로, 모달 내부의 이벤트가 메인 앱에 영향을 주지 않도록
-                // main-app-screen 내부에 있는 target만 처리하도록 제한합니다.
                 if (!target.closest('#main-app-screen')) return;
 
                 const { action, tab, compartmentId, containerType, shelfId, itemId } = target.dataset;
@@ -273,7 +279,7 @@
                 if (tab) {
                     activeTab = tab;
                     updateAndRender();
-                    return; // 탭 변경 후 아래 로직 실행 방지
+                    return;
                 }
                 if (action === 'add-shelf') {
                     handleAddShelf(compartmentId, containerType);
@@ -329,13 +335,11 @@
             const { item, compartmentId: sourceCompartmentId, shelfId: sourceShelfId, containerType: sourceContainerType } = modalConfig;
             if (!item) return;
             
-            // 1. 소스에서 아이템 제거
             const sourceShelf = fridgeData[sourceCompartmentId][sourceContainerType].find(s => s.id == sourceShelfId);
             if (sourceShelf) {
                 sourceShelf.items = sourceShelf.items.filter(i => i.id != item.id);
             }
 
-            // 2. 타겟에 아이템 추가
             const targetShelf = fridgeData[targetCompartmentId][targetContainerType].find(s => s.id == targetShelfId);
             if (targetShelf) {
                 targetShelf.items.push(item);
@@ -468,16 +472,15 @@
             modalContainer = document.createElement('div');
             modalContainer.id = 'modal-container';
             
-            renderInitialLayout(); // 초기 레이아웃 렌더링
+            renderInitialLayout();
             
             const mainAppContainer = document.getElementById('main-app-screen');
             mainAppContainer.insertAdjacentElement('afterend', modalContainer);
 
-            attachAppEventListeners(); // 이벤트 리스너를 단 한번만 등록
+            attachAppEventListeners();
 
             const data = loadDataFromStorage();
             if (data) {
-                // 데이터 구조 호환성 처리
                 if (!data.pantry) data.pantry = { name: '식량창고', shelves: [{ id: Date.now(), items: [] }] };
                 if (!data.fridge.door) data.fridge.door = [];
                 if (!data.freezer.door) data.freezer.door = [];
