@@ -43,7 +43,6 @@
 </head>
 <body class="bg-gray-100">
 
-    <!-- 앱 전체 컨테이너 -->
     <div id="app-root"></div>
 
     <script type="module">
@@ -52,6 +51,7 @@
         let activeTab = 'fridge';
         let modalConfig = { item: null, compartmentId: null, shelfId: null, containerType: null };
         let modalContainer;
+        let appRoot; // appRoot 변수 추가
         
         // --- 데이터 저장 키 ---
         const STORAGE_KEY = 'smart-fridge-data-local';
@@ -100,14 +100,11 @@
         function updateAndRender() {
             saveDataToStorage();
             renderMainApp();
-            attachMainAppListeners();
         }
 
 
         // --- 렌더링 함수 ---
-        const appRoot = document.getElementById('app-root');
-
-        function render() {
+        function renderInitialLayout() {
             const currentYear = new Date().getFullYear();
             appRoot.innerHTML = `
                 <div id="intro-screen" class="flex flex-col justify-center items-center h-screen text-center p-4 bg-white text-gray-800 relative">
@@ -132,23 +129,24 @@
 
             document.getElementById('start-button').addEventListener('click', () => {
                 document.getElementById('intro-screen').classList.add('hidden');
-                document.getElementById('main-app-screen').classList.remove('hidden');
-                document.getElementById('main-app-screen').classList.add('flex');
+                const mainAppScreen = document.getElementById('main-app-screen');
+                mainAppScreen.classList.remove('hidden');
+                mainAppScreen.classList.add('flex');
                 renderMainApp();
-                attachMainAppListeners();
             });
         }
 
         function renderMainApp() {
+            const mainAppScreen = document.getElementById('main-app-screen');
             if (!fridgeData) {
-                document.getElementById('main-app-screen').innerHTML = `<div class="flex justify-center items-center h-screen w-full"><div class="text-xl font-semibold">데이터를 불러오는 중...</div></div>`;
+                mainAppScreen.innerHTML = `<div class="flex justify-center items-center h-screen w-full"><div class="text-xl font-semibold">데이터를 불러오는 중...</div></div>`;
                 return;
             }
             
             const summary = getSummary();
             const compartmentHtml = renderCompartment(activeTab, fridgeData[activeTab]);
 
-            document.getElementById('main-app-screen').innerHTML = `
+            mainAppScreen.innerHTML = `
                 <header class="p-4 bg-white/80 backdrop-blur-sm shadow-md sticky top-0 z-20">
                     <h1 class="text-3xl font-bold text-center text-gray-700">스마트 식료품 관리</h1>
                     <div class="flex justify-center items-center flex-wrap gap-x-6 gap-y-2 mt-2 text-sm">
@@ -260,20 +258,28 @@
             return { total, expired, expiringSoon };
         }
 
-        function attachMainAppListeners() {
-            const mainAppScreen = document.getElementById('main-app-screen');
-            if (!mainAppScreen) return;
-            mainAppScreen.addEventListener('click', (e) => {
+        // --- 이벤트 핸들러 및 리스너 ---
+        function attachAppEventListeners() {
+            appRoot.addEventListener('click', (e) => {
                 const target = e.target.closest('[data-action], [data-tab]');
                 if (!target) return;
+
+                // closest는 가장 가까운 상위 요소를 찾으므로, 모달 내부의 이벤트가 메인 앱에 영향을 주지 않도록
+                // main-app-screen 내부에 있는 target만 처리하도록 제한합니다.
+                if (!target.closest('#main-app-screen')) return;
+
                 const { action, tab, compartmentId, containerType, shelfId, itemId } = target.dataset;
+                
                 if (tab) {
                     activeTab = tab;
                     updateAndRender();
+                    return; // 탭 변경 후 아래 로직 실행 방지
                 }
-                if (action === 'add-shelf') handleAddShelf(compartmentId, containerType);
-                if (action === 'remove-shelf') handleRemoveShelf(compartmentId, shelfId, containerType);
-                if (action === 'add-item' || action === 'edit-item') {
+                if (action === 'add-shelf') {
+                    handleAddShelf(compartmentId, containerType);
+                } else if (action === 'remove-shelf') {
+                    handleRemoveShelf(compartmentId, shelfId, containerType);
+                } else if (action === 'add-item' || action === 'edit-item') {
                     let item = null;
                     if (itemId) {
                         item = fridgeData[compartmentId][containerType].find(s => s.id == shelfId)?.items.find(i => i.id == itemId);
@@ -283,6 +289,7 @@
                 }
             });
         }
+
 
         function handleAddShelf(compartmentId, containerType) {
             if (!fridgeData) return;
@@ -338,6 +345,7 @@
             closeModal();
         }
 
+        // --- 모달 관련 함수 ---
         function openItemModal() {
             const { item } = modalConfig;
             const today = new Date(); today.setDate(today.getDate() + 7);
@@ -456,9 +464,17 @@
 
         // --- 앱 초기화 ---
         function initialize() {
-            render();
-            modalContainer = document.getElementById('modal-container');
+            appRoot = document.getElementById('app-root');
+            modalContainer = document.createElement('div');
+            modalContainer.id = 'modal-container';
             
+            renderInitialLayout(); // 초기 레이아웃 렌더링
+            
+            const mainAppContainer = document.getElementById('main-app-screen');
+            mainAppContainer.insertAdjacentElement('afterend', modalContainer);
+
+            attachAppEventListeners(); // 이벤트 리스너를 단 한번만 등록
+
             const data = loadDataFromStorage();
             if (data) {
                 // 데이터 구조 호환성 처리
