@@ -1,65 +1,576 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FridgeMate</title>
-    <link rel="stylesheet" href="style.css">
+    <title>스마트 식료품 관리</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Jua', sans-serif; }
+        .hidden { display: none; }
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 40;
+            padding: 1rem;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            width: 100%;
+            max-width: 32rem; /* Adjusted for different modals */
+        }
+        /* Lucide 아이콘을 위한 기본 스타일 */
+        .lucide {
+            width: 1em;
+            height: 1em;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+            display: inline-block;
+        }
+    </style>
 </head>
 <body>
-    <div class="top-bar">
-        <h1 data-i18n="appTitle">FridgeMate</h1>
-        <label for="lang-select" class="visually-hidden" data-i18n="language">Language</label>
-        <select id="lang-select">
-            <option value="en">English</option>
-            <option value="ko">한국어</option>
-        </select>
-    </div>
 
-    <div id="tabs">
-        <button data-tab="fridge" class="active" data-i18n="tabFridge">Fridge</button>
-        <button data-tab="freezer" data-i18n="tabFreezer">Freezer</button>
-        <button data-tab="pantry" data-i18n="tabPantry">Pantry</button>
-    </div>
+    <!-- 앱 전체 컨테이너 -->
+    <div id="app-root"></div>
 
-    <div id="fridge" class="storage">
-        <h2 data-i18n="fridgeTitle">Fridge</h2>
-        <form id="fridge-add-section" class="section-form">
-            <input name="name" required data-i18n-placeholder="sectionNamePlaceholder">
-            <select name="type">
-                <option value="Shelf" data-i18n-option="sectionTypeShelf">Shelf</option>
-                <option value="Door" data-i18n-option="sectionTypeDoor">Door</option>
-            </select>
-            <button type="submit" data-i18n="addSection">Add Section</button>
-        </form>
-        <div id="fridge-sections"></div>
-    </div>
+    <script type="module">
+        // Firebase SDK 임포트
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, updateDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    <div id="freezer" class="storage" style="display:none">
-        <h2 data-i18n="freezerTitle">Freezer</h2>
-        <form id="freezer-add-section" class="section-form">
-            <input name="name" required data-i18n-placeholder="sectionNamePlaceholder">
-            <select name="type">
-                <option value="Shelf" data-i18n-option="sectionTypeShelf">Shelf</option>
-                <option value="Door" data-i18n-option="sectionTypeDoor">Door</option>
-            </select>
-            <button type="submit" data-i18n="addSection">Add Section</button>
-        </form>
-        <div id="freezer-sections"></div>
-    </div>
+        // --- 전역 상태 변수 ---
+        let fridgeData = null;
+        let userId = null;
+        let activeTab = 'fridge';
+        let modalConfig = { item: null, compartmentId: null, shelfId: null, containerType: null };
+        
+        // --- Firebase 설정 ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-refrigerator-app';
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        setLogLevel('debug');
 
-    <div id="pantry" class="storage" style="display:none">
-        <h2 data-i18n="pantryTitle">Pantry</h2>
-        <form id="pantry-add-section" class="section-form">
-            <input name="name" required data-i18n-placeholder="sectionNamePlaceholder">
-            <select name="type">
-                <option value="Shelf" data-i18n-option="sectionTypeShelf">Shelf</option>
-            </select>
-            <button type="submit" data-i18n="addSection">Add Section</button>
-        </form>
-        <div id="pantry-sections"></div>
-    </div>
+        // --- 초기 데이터 구조 ---
+        const initialFridgeData = {
+            fridge: { name: '냉장실', shelves: [{ id: Date.now() + 2, items: [] }], door: [{ id: Date.now() + 3, items: [] }] },
+            freezer: { name: '냉동실', shelves: [{ id: Date.now(), items: [] }], door: [{ id: Date.now() + 1, items: [] }] },
+            pantry: { name: '식량창고', shelves: [{ id: Date.now() + 4, items: [] }] }
+        };
 
-    <script src="script.js"></script>
+        // --- Lucide 아이콘 렌더링 함수 ---
+        const ICONS = {
+            PlusCircle: `<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line>`,
+            Trash2: `<path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line>`,
+            X: `<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>`,
+            Minus: `<line x1="5" y1="12" x2="19" y2="12"></line>`,
+            Plus: `<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>`,
+            Tag: `<path d="M12.586 2.586a2 2 0 0 0-2.828 0L2.172 10.172a2 2 0 0 0 0 2.828l9.414 9.414a2 2 0 0 0 2.828 0l7.586-7.586a2 2 0 0 0 0-2.828L12.586 2.586z"></path><circle cx="8.5" cy="8.5" r="1.5"></circle>`,
+            Calendar: `<rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>`,
+            Package: `<path d="M16.5 9.4a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0z"></path><path d="M12 14.1c-3.2 0-6 2.2-6 5.1 0 1.6 1.3 2.9 3 2.9h6c1.7 0 3-1.3 3-2.9 0-2.9-2.8-5.1-6-5.1z"></path><path d="M21 16h-1.5"></path><path d="M4.5 16H3"></path>`,
+            Info: `<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>`,
+            Snowflake: `<line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line><path d="m20 16-4-4 4-4"></path><path d="m4 8 4 4-4 4"></path><path d="m16 4-4 4-4-4"></path><path d="m8 20 4-4 4 4"></path>`,
+            Thermometer: `<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"></path>`,
+            Sparkles: `<path d="m12 3-1.9 5.8-5.8 1.9 5.8 1.9L12 21l1.9-5.8 5.8-1.9-5.8-1.9L12 3z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path>`,
+            ChefHat: `<path d="M12 2a5 5 0 0 0-5 5v1.5a1.5 1.5 0 0 0 3 0V7a2 2 0 0 1 4 0v1.5a1.5 1.5 0 0 0 3 0V7a5 5 0 0 0-5-5Z"></path><path d="M12 15H6a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-6Z"></path>`,
+            DoorOpen: `<path d="M13 4h3a2 2 0 0 1 2 2v14"></path><path d="M2 20h3"></path><path d="M13 20h9"></path><path d="M10 12v.01"></path><path d="M13 4.562v15.438a2 2 0 0 1-2.614 1.86-1 1 0 0 0-.772 0 2 2 0 0 1-2.614-1.86V4.562A2 2 0 0 1 7 3.12a1 1 0 0 0 0-1.24A2 2 0 0 1 9 2h2a2 2 0 0 1 2 1.88 1 1 0 0 0 0 1.24 2 2 0 0 1-2 1.442Z"></path>`,
+            Move: `<polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="15 19 12 22 9 19"></polyline><polyline points="19 9 22 12 19 15"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line>`,
+            Archive: `<rect width="20" height="5" x="2" y="3" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path>`,
+        };
+        const icon = (name, className = '') => `<svg class="lucide ${className}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${ICONS[name]}</svg>`;
+
+        // --- 렌더링 함수 ---
+        const appRoot = document.getElementById('app-root');
+
+        function render() {
+            const currentYear = new Date().getFullYear();
+            appRoot.innerHTML = `
+                <!-- 인트로 화면 -->
+                <div id="intro-screen" class="flex flex-col justify-center items-center h-screen text-center p-4 bg-gray-900 text-white" style="font-family: 'Jua', sans-serif;">
+                    <div class="mb-8 w-48 h-48">
+                        <svg viewBox="0 0 100 100" width="100%" height="100%">
+                            ${[
+                                { cx: 30, cy: 40, hasBorder: false }, { cx: 70, cy: 40, hasBorder: false },
+                                { cx: 50, cy: 84, hasBorder: false }, { cx: 60, cy: 62, hasBorder: true },
+                                { cx: 40, cy: 62, hasBorder: true }, { cx: 50, cy: 40, hasBorder: true },
+                            ].map(pos => `<circle cx="${pos.cx}" cy="${pos.cy}" r="13" fill="#6d28d9" stroke="${pos.hasBorder ? 'white' : 'none'}" stroke-width="2.5"></circle>`).join('')}
+                            <polyline points="45,18 50,16 50,27" stroke="#22c55e" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"></polyline>
+                        </svg>
+                    </div>
+                    <h1 class="text-5xl font-bold text-purple-300 mb-4" style="text-shadow: 2px 2px 4px #000;">포도 스튜디오</h1>
+                    <p class="text-lg text-gray-300 mb-8">세상에서 가장 달콤한 게임</p>
+                    <button id="start-button" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-full text-xl shadow-lg transform hover:scale-105 transition-transform duration-300">시작하기</button>
+                    <footer class="absolute bottom-4"><p class="text-xs text-gray-500">© ${currentYear} Podo Studio. All Rights Reserved.</p></footer>
+                </div>
+
+                <!-- 메인 앱 화면 (초기에는 숨김) -->
+                <div id="main-app-screen" class="hidden bg-gradient-to-br from-blue-100 to-cyan-100 min-h-screen text-gray-800 flex-col"></div>
+
+                <!-- 모달 컨테이너 -->
+                <div id="modal-container"></div>
+            `;
+
+            document.getElementById('start-button').addEventListener('click', () => {
+                document.getElementById('intro-screen').classList.add('hidden');
+                document.getElementById('main-app-screen').classList.remove('hidden');
+                document.getElementById('main-app-screen').classList.add('flex');
+                renderMainApp();
+                // BUG FIX: 메인 앱 최초 렌더링 후 리스너 부착
+                attachMainAppListeners();
+            });
+        }
+
+        function renderMainApp() {
+            if (!fridgeData) {
+                document.getElementById('main-app-screen').innerHTML = `<div class="flex justify-center items-center h-screen w-full"><div class="text-xl font-semibold">데이터를 불러오는 중...</div></div>`;
+                return;
+            }
+            
+            const summary = getSummary();
+            const compartmentHtml = renderCompartment(activeTab, fridgeData[activeTab]);
+
+            document.getElementById('main-app-screen').innerHTML = `
+                <header class="p-4 bg-white/80 backdrop-blur-sm shadow-md sticky top-0 z-20">
+                    <h1 class="text-3xl font-bold text-center text-gray-700">스마트 식료품 관리</h1>
+                    <div class="flex justify-center items-center flex-wrap gap-x-6 gap-y-2 mt-2 text-sm">
+                        <span>총 <strong class="text-blue-600">${summary.total}</strong>개</span>
+                        <span>임박: <strong class="text-yellow-600">${summary.expiringSoon}</strong>개</span>
+                        <span>만료: <strong class="text-red-600">${summary.expired}</strong>개</span>
+                    </div>
+                    <div class="mt-3 text-center">
+                        <button id="recipe-btn" data-action="open-recipe" class="py-2 px-4 bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all flex items-center justify-center mx-auto">
+                            ${icon('Sparkles', 'mr-2')} ✨ 레시피 추천받기
+                        </button>
+                    </div>
+                </header>
+                <main class="flex-grow flex flex-col p-4">
+                    <div class="max-w-4xl w-full mx-auto flex-grow flex flex-col">
+                        <div id="tabs-container" class="flex">
+                            <button data-tab="fridge" class="tab-btn flex-1 flex items-center justify-center py-3 px-4 text-lg font-bold transition-all duration-300 rounded-t-lg ${activeTab === 'fridge' ? 'bg-white/80 text-blue-600 shadow-inner' : 'bg-gray-200/50 text-gray-500 hover:bg-gray-200/80'}">${icon('Thermometer', 'mr-2')} 냉장실</button>
+                            <button data-tab="freezer" class="tab-btn flex-1 flex items-center justify-center py-3 px-4 text-lg font-bold transition-all duration-300 rounded-t-lg ${activeTab === 'freezer' ? 'bg-white/80 text-blue-600 shadow-inner' : 'bg-gray-200/50 text-gray-500 hover:bg-gray-200/80'}">${icon('Snowflake', 'mr-2')} 냉동실</button>
+                            <button data-tab="pantry" class="tab-btn flex-1 flex items-center justify-center py-3 px-4 text-lg font-bold transition-all duration-300 rounded-t-lg ${activeTab === 'pantry' ? 'bg-white/80 text-blue-600 shadow-inner' : 'bg-gray-200/50 text-gray-500 hover:bg-gray-200/80'}">${icon('Archive', 'mr-2')} 식량창고</button>
+                        </div>
+                        <div id="compartment-content" class="flex-grow">${compartmentHtml}</div>
+                    </div>
+                </main>
+                <footer class="text-center text-xs text-gray-500 p-4">
+                    <p>사용자 ID: ${userId || '알 수 없음'}</p>
+                    <p>+ 버튼을 눌러 각 공간에 물품을 추가하세요.</p>
+                </footer>
+            `;
+        }
+
+        function renderCompartment(id, data) {
+            return `
+                <div class="p-4 bg-white bg-opacity-50 rounded-b-xl shadow-inner overflow-y-auto h-full">
+                    ${data.shelves.map(shelf => renderShelf(shelf, id, 'shelves')).join('')}
+                    <button data-action="add-shelf" data-compartment-id="${id}" data-container-type="shelves" class="w-full mt-2 py-2 px-4 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center">
+                        ${icon('PlusCircle', 'mr-2')} 선반 추가
+                    </button>
+                    ${data.door ? `
+                    <div class="mt-8">
+                        <h3 class="text-lg font-bold text-gray-700 mb-2 flex items-center">${icon('DoorOpen', 'mr-2')} 도어 포켓</h3>
+                        ${data.door.map(shelf => renderShelf(shelf, id, 'door')).join('')}
+                        <button data-action="add-shelf" data-compartment-id="${id}" data-container-type="door" class="w-full mt-2 py-2 px-4 bg-cyan-600 text-white font-semibold rounded-lg hover:bg-cyan-700 transition-colors flex items-center justify-center">
+                            ${icon('PlusCircle', 'mr-2')} 도어 포켓 추가
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function renderShelf(shelf, compartmentId, containerType) {
+            return `
+                <div class="bg-gray-200 bg-opacity-50 border-t-2 border-b-2 border-gray-300 py-4 mb-2 rounded-lg">
+                    <div class="flex items-end justify-start h-44 px-2 overflow-x-auto">
+                        ${shelf.items.map(item => renderItem(item, compartmentId, shelf.id, containerType)).join('')}
+                        <button data-action="add-item" data-compartment-id="${compartmentId}" data-shelf-id="${shelf.id}" data-container-type="${containerType}" class="flex-shrink-0 flex items-center justify-center w-14 h-36 text-gray-400 hover:text-green-500 transition-colors">
+                            ${icon('PlusCircle')}
+                        </button>
+                    </div>
+                    <div class="text-right pr-2 pt-1">
+                        <button data-action="remove-shelf" data-compartment-id="${compartmentId}" data-shelf-id="${shelf.id}" data-container-type="${containerType}" class="text-red-500 hover:text-red-700">
+                            ${icon('Trash2')}
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderItem(item, compartmentId, shelfId, containerType) {
+            const expiryColor = getExpiryColor(item.expiryDate);
+            const tagColor = getTagColor(item.tag);
+            return `
+                <div data-action="edit-item" data-item-id="${item.id}" data-compartment-id="${compartmentId}" data-shelf-id="${shelfId}" data-container-type="${containerType}" class="relative flex-shrink-0 w-14 h-36 mx-1 border-2 border-gray-300 rounded-lg cursor-pointer group bg-gray-100 flex items-end justify-center overflow-hidden" title="${item.name} (${item.quantity}%)">
+                    <div class="w-full rounded-b-md transition-all duration-300" style="height: ${item.quantity}%; background-color: ${tagColor};"></div>
+                    <div class="absolute top-1 right-1 w-3 h-3 rounded-full ${expiryColor} border-2 border-white"></div>
+                    <div class="absolute inset-0 flex items-center justify-center p-1 pointer-events-none">
+                        <span class="text-sm font-semibold text-black [text-shadow:_0_1px_2px_rgb(255_255_255_/_80%)]" style="writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 90%;">${item.name}</span>
+                    </div>
+                    <div class="absolute bottom-1 left-0 right-0 text-center pointer-events-none">
+                        <span class="text-xs font-bold text-gray-800 bg-white/60 backdrop-blur-sm px-1.5 py-0.5 rounded-full">${item.quantity}%</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- 유틸리티 및 계산 함수 ---
+        function getExpiryColor(expiryDate) {
+            if (!expiryDate) return 'bg-blue-400';
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const expiry = new Date(expiryDate);
+            const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) return 'bg-red-500';
+            if (diffDays <= 3) return 'bg-yellow-500';
+            return 'bg-green-500';
+        }
+        function getTagColor(tag) {
+            const colors = { '육류': '#fca5a5', '해산물': '#93c5fd', '유제품': '#e5e7eb', '채소': '#86efac', '과일': '#fdba74', '음료': '#67e8f9', '기타': '#d8b4fe' };
+            return colors[tag] || '#d1d5db';
+        }
+        function getSummary() {
+            if (!fridgeData) return { total: 0, expired: 0, expiringSoon: 0 };
+            let total = 0, expired = 0, expiringSoon = 0;
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            Object.values(fridgeData).forEach(comp => {
+                const allItems = [...comp.shelves.flatMap(s => s.items), ...(comp.door || []).flatMap(d => d.items)];
+                total += allItems.length;
+                allItems.forEach(item => {
+                    if (item.expiryDate) {
+                        const expiry = new Date(item.expiryDate);
+                        const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+                        if (diffDays < 0) expired++; else if (diffDays <= 3) expiringSoon++;
+                    }
+                });
+            });
+            return { total, expired, expiringSoon };
+        }
+
+        // --- 이벤트 핸들러 ---
+        function attachMainAppListeners() {
+            const mainAppScreen = document.getElementById('main-app-screen');
+            if (!mainAppScreen) return;
+
+            mainAppScreen.addEventListener('click', (e) => {
+                const target = e.target.closest('[data-action], [data-tab]');
+                if (!target) return;
+
+                const action = target.dataset.action;
+                const tab = target.dataset.tab;
+
+                if (tab) {
+                    activeTab = tab;
+                    renderMainApp();
+                    attachMainAppListeners();
+                }
+
+                if (action === 'add-shelf') {
+                    const { compartmentId, containerType } = target.dataset;
+                    handleAddShelf(compartmentId, containerType);
+                }
+                if (action === 'remove-shelf') {
+                    const { compartmentId, shelfId, containerType } = target.dataset;
+                    handleRemoveShelf(compartmentId, shelfId, containerType);
+                }
+                if (action === 'add-item' || action === 'edit-item') {
+                    const { compartmentId, shelfId, containerType, itemId } = target.dataset;
+                    let item = null;
+                    if (itemId) {
+                        const container = fridgeData[compartmentId][containerType];
+                        const shelf = container.find(s => s.id == shelfId);
+                        item = shelf.items.find(i => i.id == itemId);
+                    }
+                    modalConfig = { item, compartmentId, shelfId, containerType };
+                    openItemModal();
+                }
+                if (action === 'open-recipe') {
+                    openRecipeModal();
+                }
+            });
+        }
+
+        async function handleAddShelf(compartmentId, containerType) {
+            if (!fridgeData) return;
+            const newFridgeData = JSON.parse(JSON.stringify(fridgeData));
+            newFridgeData[compartmentId][containerType].push({ id: Date.now(), items: [] });
+            const docRef = doc(db, "artifacts", appId, "users", userId, "refrigerator", "data");
+            await updateDoc(docRef, newFridgeData);
+        }
+
+        async function handleRemoveShelf(compartmentId, shelfId, containerType) {
+            if (!fridgeData || fridgeData[compartmentId][containerType].length <= 1) {
+                alert('마지막 선반/포켓은 삭제할 수 없습니다.');
+                return;
+            }
+            if (window.confirm('이 공간과 안의 모든 물품을 삭제하시겠습니까?')) {
+                const newFridgeData = JSON.parse(JSON.stringify(fridgeData));
+                newFridgeData[compartmentId][containerType] = newFridgeData[compartmentId][containerType].filter(shelf => shelf.id != shelfId);
+                const docRef = doc(db, "artifacts", appId, "users", userId, "refrigerator", "data");
+                await updateDoc(docRef, newFridgeData);
+            }
+        }
+
+        async function handleSaveItem(itemToSave) {
+            if (!fridgeData) return;
+            const { compartmentId, shelfId, containerType } = modalConfig;
+            if (!containerType) return;
+            const newFridgeData = JSON.parse(JSON.stringify(fridgeData));
+            const container = newFridgeData[compartmentId][containerType];
+            const shelf = container.find(s => s.id == shelfId);
+            if (shelf) {
+                if (!itemToSave) { // 삭제
+                    shelf.items = shelf.items.filter(i => i.id != modalConfig.item.id);
+                } else { // 추가/수정
+                    const itemIndex = shelf.items.findIndex(i => i.id == itemToSave.id);
+                    if (itemIndex > -1) shelf.items[itemIndex] = itemToSave;
+                    else shelf.items.push(itemToSave);
+                }
+            }
+            const docRef = doc(db, "artifacts", appId, "users", userId, "refrigerator", "data");
+            await setDoc(docRef, newFridgeData);
+            closeModal();
+        }
+
+        async function handleMoveItem(targetCompartmentId, targetContainerType, targetShelfId) {
+            const { item, compartmentId: sourceCompartmentId, shelfId: sourceShelfId, containerType: sourceContainerType } = modalConfig;
+            if (sourceCompartmentId === targetCompartmentId && sourceContainerType === targetContainerType && sourceShelfId == targetShelfId) return;
+            
+            const newFridgeData = JSON.parse(JSON.stringify(fridgeData));
+            const sourceContainer = newFridgeData[sourceCompartmentId][sourceContainerType];
+            const sourceShelf = sourceContainer.find(s => s.id == sourceShelfId);
+            if (sourceShelf) {
+                sourceShelf.items = sourceShelf.items.filter(i => i.id != item.id);
+            } else return;
+
+            const targetContainer = newFridgeData[targetCompartmentId][targetContainerType];
+            const targetShelf = targetContainer.find(s => s.id == targetShelfId);
+            if (targetShelf) {
+                targetShelf.items.push(item);
+            } else return;
+
+            const docRef = doc(db, "artifacts", appId, "users", userId, "refrigerator", "data");
+            await setDoc(docRef, newFridgeData);
+            closeModal();
+        }
+
+        // --- 모달 관리 ---
+        const modalContainer = document.getElementById('modal-container');
+
+        function openItemModal() {
+            const { item } = modalConfig;
+            const today = new Date(); today.setDate(today.getDate() + 7);
+            const defaultExpiry = today.toISOString().split('T')[0];
+
+            const name = item ? item.name : '';
+            const quantity = item ? item.quantity : 100;
+            const tag = item ? item.tag : '기타';
+            const hasExpiry = item ? !!item.expiryDate : true;
+            const expiryDate = item ? item.expiryDate : defaultExpiry;
+
+            const tags = ['육류', '해산물', '유제품', '채소', '과일', '음료', '기타'];
+
+            modalContainer.innerHTML = `
+                <div id="item-modal" class="modal-overlay">
+                    <div class="modal-content max-w-md">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-2xl font-bold">${item ? '물품 수정' : '물품 추가'}</h3>
+                            <button data-modal-close>${icon('X')}</button>
+                        </div>
+                        <div class="space-y-4">
+                            <div><label class="flex items-center text-sm font-medium text-gray-700">${icon('Package', 'mr-2')}물품 이름</label><input id="item-name" type="text" value="${name}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" /></div>
+                            <div><label class="flex items-center text-sm font-medium text-gray-700">${icon('Info', 'mr-2')}남은 양: <span id="quantity-label">${quantity}</span>%</label><div class="flex items-center"><button id="quantity-minus" class="p-2 bg-gray-200 rounded-l-md">${icon('Minus')}</button><input id="item-quantity" type="range" min="0" max="100" step="10" value="${quantity}" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" /><button id="quantity-plus" class="p-2 bg-gray-200 rounded-r-md">${icon('Plus')}</button></div></div>
+                            <div><label class="flex items-center text-sm font-medium text-gray-700">${icon('Tag', 'mr-2')}태그</label><select id="item-tag" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">${tags.map(t => `<option value="${t}" ${t === tag ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+                            <div><label class="flex items-center text-sm font-medium text-gray-700">${icon('Calendar', 'mr-2')}유통기한</label><div class="flex items-center mt-1"><input id="has-expiry" type="checkbox" ${hasExpiry ? 'checked' : ''} class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" /><span class="ml-2 text-sm text-gray-600">있음</span></div><input id="expiry-date" type="date" value="${expiryDate}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 ${hasExpiry ? '' : 'hidden'}" /></div>
+                        </div>
+                        <div class="mt-6 flex justify-between items-center">
+                            ${item ? `<button id="delete-btn" class="py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors">삭제</button><button id="move-btn" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 transition-colors flex items-center">${icon('Move', 'mr-2')}이동</button>` : '<div></div>'}
+                            <button id="save-btn" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors ml-auto">${item ? '저장' : '추가'}</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Item Modal Event Listeners
+            const quantityInput = document.getElementById('item-quantity');
+            const quantityLabel = document.getElementById('quantity-label');
+            quantityInput.addEventListener('input', () => quantityLabel.textContent = quantityInput.value);
+            document.getElementById('quantity-minus').addEventListener('click', () => { quantityInput.value = Math.max(0, parseInt(quantityInput.value) - 10); quantityLabel.textContent = quantityInput.value; });
+            document.getElementById('quantity-plus').addEventListener('click', () => { quantityInput.value = Math.min(100, parseInt(quantityInput.value) + 10); quantityLabel.textContent = quantityInput.value; });
+            
+            const hasExpiryCheckbox = document.getElementById('has-expiry');
+            hasExpiryCheckbox.addEventListener('change', () => document.getElementById('expiry-date').classList.toggle('hidden', !hasExpiryCheckbox.checked));
+
+            document.querySelector('[data-modal-close]').addEventListener('click', closeModal);
+            document.getElementById('save-btn').addEventListener('click', () => {
+                const newItem = {
+                    id: item ? item.id : Date.now(),
+                    name: document.getElementById('item-name').value,
+                    quantity: parseInt(document.getElementById('item-quantity').value),
+                    tag: document.getElementById('item-tag').value,
+                    expiryDate: document.getElementById('has-expiry').checked ? document.getElementById('expiry-date').value : null,
+                    addedDate: item ? item.addedDate : new Date().toISOString().split('T')[0]
+                };
+                if (!newItem.name) { alert('물품 이름을 입력해주세요.'); return; }
+                handleSaveItem(newItem);
+            });
+            if (item) {
+                document.getElementById('delete-btn').addEventListener('click', () => handleSaveItem(null));
+                document.getElementById('move-btn').addEventListener('click', openMoveModal);
+            }
+        }
+        
+        function openMoveModal() {
+            const { compartmentId, shelfId, containerType } = modalConfig;
+            let optionsHtml = '';
+            Object.entries(fridgeData).forEach(([cId, cData]) => {
+                optionsHtml += `<div key="${cId}"><h4 class="text-xl font-semibold text-gray-800 mb-2">${cData.name}</h4><div class="pl-4 border-l-2 border-gray-200 space-y-2">`;
+                optionsHtml += `<div><h5 class="font-bold">선반</h5>`;
+                cData.shelves.forEach((shelf, index) => {
+                    const isCurrent = compartmentId === cId && containerType === 'shelves' && shelfId == shelf.id;
+                    optionsHtml += `<button data-move-target='${JSON.stringify({cId, cType: 'shelves', sId: shelf.id})}' ${isCurrent ? 'disabled' : ''} class="w-full text-left p-2 rounded-md transition-colors hover:bg-blue-100 disabled:bg-gray-300 disabled:cursor-not-allowed">선반 ${index + 1} ${isCurrent ? '(현재 위치)' : ''}</button>`;
+                });
+                optionsHtml += `</div>`;
+                if(cData.door) {
+                    optionsHtml += `<div><h5 class="font-bold">도어 포켓</h5>`;
+                    cData.door.forEach((shelf, index) => {
+                        const isCurrent = compartmentId === cId && containerType === 'door' && shelfId == shelf.id;
+                        optionsHtml += `<button data-move-target='${JSON.stringify({cId, cType: 'door', sId: shelf.id})}' ${isCurrent ? 'disabled' : ''} class="w-full text-left p-2 rounded-md transition-colors hover:bg-cyan-100 disabled:bg-gray-300 disabled:cursor-not-allowed">도어 포켓 ${index + 1} ${isCurrent ? '(현재 위치)' : ''}</button>`;
+                    });
+                    optionsHtml += `</div>`;
+                }
+                optionsHtml += `</div></div>`;
+            });
+
+            modalContainer.innerHTML = `
+                <div id="move-modal" class="modal-overlay">
+                    <div class="modal-content max-w-lg max-h-[80vh] flex flex-col">
+                        <div class="flex justify-between items-center mb-4"><h3 class="text-2xl font-bold">이동할 위치 선택</h3><button data-modal-close>${icon('X')}</button></div>
+                        <div class="overflow-y-auto space-y-4">${optionsHtml}</div>
+                    </div>
+                </div>
+            `;
+            document.querySelector('[data-modal-close]').addEventListener('click', closeModal);
+            document.querySelectorAll('[data-move-target]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const { cId, cType, sId } = JSON.parse(btn.dataset.moveTarget);
+                    handleMoveItem(cId, cType, sId);
+                });
+            });
+        }
+
+        async function openRecipeModal() {
+            modalContainer.innerHTML = `
+                <div id="recipe-modal" class="modal-overlay">
+                    <div class="modal-content max-w-2xl max-h-[90vh] flex flex-col">
+                        <div class="flex justify-between items-center mb-4"><h3 class="text-2xl font-bold flex items-center">${icon('ChefHat', 'mr-2')} AI 레시피 추천</h3><button data-modal-close>${icon('X')}</button></div>
+                        <div id="recipe-content" class="overflow-y-auto flex-grow">
+                            <div class="flex flex-col items-center justify-center h-full"><div class="animate-pulse">${icon('Sparkles', 'text-blue-500 w-12 h-12')}</div><p class="mt-4 text-lg">레시피를 만들고 있어요...</p></div>
+                        </div>
+                        <div class="mt-4 text-right"><button id="regenerate-recipe" class="py-2 px-4 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors flex items-center ml-auto">${icon('Sparkles', 'mr-2')} 다른 레시피 추천받기</button></div>
+                    </div>
+                </div>
+            `;
+            document.querySelector('[data-modal-close]').addEventListener('click', closeModal);
+            document.getElementById('regenerate-recipe').addEventListener('click', generateRecipe);
+            await generateRecipe();
+        }
+        
+        async function generateRecipe() {
+            const recipeContent = document.getElementById('recipe-content');
+            if (recipeContent) {
+                recipeContent.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><div class="animate-pulse">${icon('Sparkles', 'text-blue-500 w-12 h-12')}</div><p class="mt-4 text-lg">레시피를 만들고 있어요...</p></div>`;
+            }
+
+            const ingredients = Object.values(fridgeData).flatMap(c => [...c.shelves, ...(c.door || [])]).flatMap(s => s.items).filter(i => i.quantity > 10).map(i => i.name);
+            const uniqueIngredients = [...new Set(ingredients)];
+            if (uniqueIngredients.length < 2) {
+                recipeContent.innerHTML = `<div class="text-red-500 p-4 bg-red-100 rounded-md">레시피를 추천하기에 재료가 부족합니다. 최소 2개 이상의 재료를 넣어주세요.</div>`;
+                return;
+            }
+            const prompt = `냉장고, 냉동실, 식량창고에 다음과 같은 재료들이 있습니다: [${uniqueIngredients.join(', ')}]. 이 재료들을 주로 활용해서 만들 수 있는 맛있는 요리 레시피 2가지를 추천해주세요. 각 레시피는 '### 요리 이름' 형식으로 제목을 달고, 필요한 재료 목록과 조리 방법을 단계별로 알기 쉽게 설명해주세요.`;
+            try {
+                const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+                const payload = { contents: chatHistory };
+                const apiKey = ""; // 깃헙 배포 시 여기에 API 키를 넣으세요.
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+                const result = await response.json();
+                const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                    recipeContent.innerHTML = `<div class="prose max-w-none">${text.replace(/### (.*)/g, '<h3>$1</h3>').replace(/\n/g, '<br />')}</div>`;
+                } else {
+                    throw new Error('No valid response from API.');
+                }
+            } catch (e) {
+                console.error(e);
+                recipeContent.innerHTML = `<div class="text-red-500 p-4 bg-red-100 rounded-md">레시피 생성 중 오류 발생. API 키가 올바른지 확인해주세요.</div>`;
+            }
+        }
+
+        function closeModal() {
+            modalContainer.innerHTML = '';
+        }
+
+        // --- 앱 초기화 ---
+        function initialize() {
+            render(); // 초기 인트로 화면 렌더링
+            onAuthStateChanged(auth, async (user) => {
+                let currentUserId = user?.uid;
+                if (!user) {
+                    try {
+                        const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        const userCredential = token ? await signInWithCustomToken(auth, token) : await signInAnonymously(auth);
+                        currentUserId = userCredential.user.uid;
+                    } catch (error) {
+                        console.error("Auth Error:", error);
+                        document.getElementById('main-app-screen').innerHTML = `<div class="flex justify-center items-center h-screen w-full"><div class="text-xl font-semibold text-red-500">인증 실패</div></div>`;
+                        return;
+                    }
+                }
+                userId = currentUserId;
+
+                // Firestore 데이터 구독
+                const docRef = doc(db, "artifacts", appId, "users", userId, "refrigerator", "data");
+                onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        // 데이터 구조 호환성 처리
+                        if (!data.fridge.door) data.fridge.door = [];
+                        if (!data.freezer.door) data.freezer.door = [];
+                        if (!data.pantry) { data.pantry = { name: '식량창고', shelves: [{ id: Date.now(), items: [] }] }; }
+                        fridgeData = data;
+                    } else {
+                        setDoc(docRef, initialFridgeData).then(() => fridgeData = initialFridgeData);
+                    }
+                    // 메인 앱이 표시된 상태라면 다시 렌더링
+                    if (!document.getElementById('main-app-screen').classList.contains('hidden')) {
+                        renderMainApp();
+                        attachMainAppListeners();
+                    }
+                });
+            });
+        }
+
+        initialize();
+    </script>
 </body>
 </html>
